@@ -1,59 +1,124 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
+import os
+import re
 import subprocess
 
+SYSTEM_CONFIG_PATH = "/etc/xdg/penfetch/config.ini"
+USER_CONFIG_PATH = os.path.expanduser("~/.config/penfetch/config.ini")
+
+CONFIG_PATH = ""
+if os.path.exists(USER_CONFIG_PATH):
+    CONFIG_PATH = USER_CONFIG_PATH
+elif os.path.exists(SYSTEM_CONFIG_PATH):
+    CONFIG_PATH = SYSTEM_CONFIG_PATH
+
+use_icon = False
+if CONFIG_PATH:
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            content = f.read().lower()
+            if "use_icon = true" in content or "use_icon=true" in content:
+                use_icon = True
+    except Exception:
+        pass
+
 logo = r"""
- ____             _              _                  ___  ____  
+ ____             _                               ___  ____  
 |  _ \ ___  _ __ | |_ __ ___  _(_)_   _ _ __ ___   / _ \/ ___| 
 | |_) / _ \| '_ \| __/ _` \ \/ / | | | | '_ ` _ \ | | | \___ \ 
 |  __/  __/| | | | || (_| |>  <| | |_| | | | | | || |_| |___) |
 |_|   \___||_| |_|\__\__,_/_/\_\_|\__,_|_| |_| |_| \___/|____/ 
 """
 
+
 def run_cmd(cmd):
     try:
-        return subprocess.check_output(cmd, shell=True, text=True).strip()
+        return subprocess.check_output(cmd, text=True).strip()
     except Exception:
         return "Unknown"
 
-def sysFetch():
-    user = run_cmd("whoami")
-    host = run_cmd("echo $HOSTNAME")
-    user_host = f"  {user}@{host}"
-    
-    os_name = run_cmd("grep '^NAME=' /etc/os-release | cut -d'=' -f2 | tr -d '\"'")
-    kernel = run_cmd("uname -r")
-    
-    user_theme = run_cmd("gsettings get org.gnome.desktop.interface gtk-theme | tr -d \"'\"")
-    icon_theme = run_cmd("gsettings get org.gnome.desktop.interface icon-theme | tr -d \"'\"")
-    cursor_theme = run_cmd("gsettings get org.gnome.desktop.interface cursor-theme | tr -d \"'\"")
-    font = run_cmd("gsettings get org.gnome.desktop.interface font-name | tr -d \"'\"")
-    term_font = run_cmd("gsettings get org.gnome.desktop.interface monospace-font-name | tr -d \"'\"")
 
-    if os_name == "Unknown": os_name = "PentaxiumOS"
-    
-    info = [
-        f"{user_host}",
-        "-" * (len(user_host) - 2),
-        f"󰋜  OS:            {os_name}",
-        f"  Kernel:        {kernel}",
-        f"󰃟  User theme:    {user_theme}",
-        f"󰀻  Icon theme:    {icon_theme}",
-        f"󰇀  Cursor theme:  {cursor_theme}",
-        f"󰗚  Font:          {font}",
-        f"  Terminal font: {term_font}"
-    ]
-    
-    max_len = max(len(line) for line in info)
-    
+def get_os_name():
+    try:
+        with open("/etc/os-release", "r") as f:
+            for line in f:
+                if line.startswith("NAME="):
+                    return line.split("=")[1].strip().strip('"')
+    except Exception:
+        pass
+    return "PentaxiumOS"
+
+
+def get_hostname():
+    try:
+        with open("/etc/hostname", "r") as f:
+            return f.read().strip()
+    except Exception:
+        return "Unknown"
+
+
+def get_gsettings(key):
+    res = run_cmd(["gsettings", "get", "org.gnome.desktop.interface", key])
+    return res.strip("'\"") if res != "Unknown" else res
+
+
+def get_visible_len(s):
+    return len(s)
+
+
+def sysFetch():
+    user = run_cmd(["whoami"])
+    host = get_hostname()
+
+    user_host = f"  {user}@{host}" if use_icon else f"{user}@{host}"
+    os_name = get_os_name()
+    kernel = run_cmd(["uname", "-r"])
+
+    user_theme = get_gsettings("gtk-theme")
+    icon_theme = get_gsettings("icon-theme")
+    cursor_theme = get_gsettings("cursor-theme")
+    font = get_gsettings("font-name")
+    term_font = get_gsettings("monospace-font-name")
+
+    if use_icon:
+        info = [
+            (user_host, user_host),
+            ("SEP", "SEP"),
+            (f"󰋜  OS:            {os_name}", f"OS:            {os_name}"),
+            (f"  Kernel:        {kernel}", f"Kernel:        {kernel}"),
+            (f"󰃟  User theme:    {user_theme}", f"User theme:    {user_theme}"),
+            (f"󰀻  Icon theme:    {icon_theme}", f"Icon theme:    {icon_theme}"),
+            (f"󰇀  Cursor theme: {cursor_theme}", f"Cursor theme: {cursor_theme}"),
+            (f"󰗚  Font:          {font}", f"Font:          {font}"),
+            (f"  Terminal font: {term_font}", f"Terminal font: {term_font}"),
+        ]
+    else:
+        info = [(f"{user}@{host}", f"{user}@{host}"), ("SEP", "SEP")] + [
+            (f"{k}: {' '*(13-len(k))}{v}", f"{k}: {' '*(13-len(k))}{v}")
+            for k, v in [
+                ("OS", os_name),
+                ("Kernel", kernel),
+                ("User theme", user_theme),
+                ("Icon theme", icon_theme),
+                ("Cursor theme", cursor_theme),
+                ("Font", font),
+                ("Terminal font", term_font),
+            ]
+        ]
+
+    max_len = max(len(display_alt) for line, display_alt in info if line != "SEP")
+
     print(logo)
-    print("┌" + "─" * (max_len + 4) + "┐")
-    for line in info:
-        if line == "-" * (len(user_host) - 2):
+    print("┌ c" + "─" * (max_len + 4) + "┐")
+    for line, display_alt in info:
+        if line == "SEP":
             print("├" + "─" * (max_len + 4) + "┤")
         else:
-            print(f"│  {line.ljust(max_len)}  │")
+            pad = max_len - len(display_alt)
+            print(f"│  {line}{' ' * pad}  │")
     print("└" + "─" * (max_len + 4) + "┘")
+
 
 if __name__ == "__main__":
     sysFetch()
