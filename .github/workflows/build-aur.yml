@@ -16,9 +16,15 @@ on:
 jobs:
   build-pkg:
     runs-on: ubuntu-latest
+    
+    # Thêm block này để cấp quyền ghi cho GITHUB_TOKEN
+    permissions:
+      contents: write # Quyền tạo tag và release
+      actions: read
+    
     container:
       image: archlinux:latest
-      options: --privileged # Cần quyền để chạy một số lệnh hệ thống của Arch nếu cần
+      options: --privileged
 
     steps:
     - name: Checkout mã nguồn
@@ -38,22 +44,17 @@ jobs:
     - name: Cập nhật phiên bản vào PKGBUILD
       run: |
         sed -i "s/^pkgver=.*/pkgver=${{ github.event.inputs.version }}/" PKGBUILD
-        # Reset lại pkgrel về 1 khi nâng cấp bản mới
         sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
     - name: Chuẩn bị file source (Tải file penfetch từ repo)
       run: |
-        # Đảm bảo có file penfetch trong thư mục gốc trước khi build
         curl -sSL "https://raw.githubusercontent.com/ngmvix2010/penfetch/main/penfetch" -o penfetch
         chown builder:builder penfetch
         chmod +x penfetch
 
     - name: Build Package bằng makepkg
       run: |
-        # Chạy makepkg dưới quyền user 'builder'
         sudo -H -u builder makepkg -f --noconfirm
-        
-        # Lấy tên file vừa build xong để dùng cho các bước sau
         PKG_FILE=$(ls *.pkg.tar.zst)
         echo "PKG_FILE=$PKG_FILE" >> $GITHUB_ENV
         echo "Đã build xong thành công: $PKG_FILE"
