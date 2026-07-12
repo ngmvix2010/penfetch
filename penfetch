@@ -111,15 +111,21 @@ def sysFetch():
 
     max_len = max(len(display_alt) for line, display_alt in info if line != "SEP")
 
+    padd = 4
+    if use_icon:
+        padd = 7
+    else:
+        padd = 4
+
     print(logo)
-    print("┌" + "─" * (max_len + 7) + "┐")
+    print("┌" + "─" * (max_len + padd) + "┐")
     for line, display_alt in info:
         if line == "SEP":
-            print("├" + "─" * (max_len + 7) + "┤")
+            print("├" + "─" * (max_len + padd) + "┤")
         else:
             pad = max_len - len(display_alt)
             print(f"│  {line}{' ' * pad}  │")
-    print("└" + "─" * (max_len + 7) + "┘")
+    print("└" + "─" * (max_len + padd) + "┘")
 
 
 if __name__ == "__main__":
