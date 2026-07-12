@@ -1,0 +1,80 @@
+name: Build and Release Arch AUR Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Nhập phiên bản cần build (VD: 1.0.2)'
+        required: true
+        default: '1.0.2'
+      auto_publish:
+        description: 'Tự động tạo GitHub Release và publish?'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  build-pkg:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --privileged # Cần quyền để chạy một số lệnh hệ thống của Arch nếu cần
+
+    steps:
+    - name: Checkout mã nguồn
+      uses: actions/checkout@v4
+
+    - name: Cập nhật hệ thống và cài đặt công cụ build
+      run: |
+        pacman -Syu --noconfirm
+        pacman -S --noconfirm base-devel git sudo python
+
+    - name: Cấu hình User bảo mật cho makepkg (Không chạy bằng root)
+      run: |
+        useradd -m builder
+        echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+        chown -R builder:builder ./
+
+    - name: Cập nhật phiên bản vào PKGBUILD
+      run: |
+        sed -i "s/^pkgver=.*/pkgver=${{ github.event.inputs.version }}/" PKGBUILD
+        # Reset lại pkgrel về 1 khi nâng cấp bản mới
+        sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+    - name: Chuẩn bị file source (Tải file penfetch từ repo)
+      run: |
+        # Đảm bảo có file penfetch trong thư mục gốc trước khi build
+        curl -sSL "https://raw.githubusercontent.com/ngmvix2010/penfetch/main/penfetch" -o penfetch
+        chown builder:builder penfetch
+        chmod +x penfetch
+
+    - name: Build Package bằng makepkg
+      run: |
+        # Chạy makepkg dưới quyền user 'builder'
+        sudo -H -u builder makepkg -f --noconfirm
+        
+        # Lấy tên file vừa build xong để dùng cho các bước sau
+        PKG_FILE=$(ls *.pkg.tar.zst)
+        echo "PKG_FILE=$PKG_FILE" >> $GITHUB_ENV
+        echo "Đã build xong thành công: $PKG_FILE"
+
+    - name: Lưu Artifact (Dùng để tải về từ GitHub Actions nếu không release)
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PKG_FILE }}
+        path: ./${{ env.PKG_FILE }}
+
+    - name: Tạo GitHub Release và Upload Package
+      if: ${{ github.event.inputs.auto_publish == 'true' }}
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ github.event.inputs.version }}
+        name: Release v${{ github.event.inputs.version }}
+        body: |
+          ### Arch Linux AUR Package cho `penfetch`
+          - Phiên bản: `${{ github.event.inputs.version }}`
+          - Kiến trúc: `any`
+          - Cài đặt thủ công bằng lệnh: `sudo pacman -U <tên_file>.pkg.tar.zst`
+        files: ./${{ env.PKG_FILE }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
