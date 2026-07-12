@@ -197,8 +197,6 @@ def sysFetch():
 
     max_len = max(len(display_alt) for line, display_alt in info if line != "SEP")
 
-    max_len += 6
-
     print(logo)
 
     print("┌" + "─" * (max_len + 4) + "┐")
